@@ -25,13 +25,11 @@ class CustomerController extends Controller
             'name'  => $request->name
         ]);
 
-        Customer::create($request->only(['email', 'name']) + [
+        $customer = Customer::create($request->only(['email', 'name']) + [
             'stripe_id' => $stripeCustomer->id
         ]);
 
-        return response()->json([
-            'message'   => 'Customer Created Successfully'
-        ]);
+        return ok('Customer Create Successfully',$customer);
     }
 
     public function update(Request $request, $customerId)
