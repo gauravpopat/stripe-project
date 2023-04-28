@@ -19,7 +19,7 @@ class PlanController extends Controller
             'interval_unit' => 'required|in:day,week,month,year',
             'interval'      => 'required|numeric|min:1',
             'product_id'    => 'required|exists:products,id',
-            'description'   => 'nullable|string'
+            'description'   => 'required|string'
         ]);
 
         if ($validation->fails())
