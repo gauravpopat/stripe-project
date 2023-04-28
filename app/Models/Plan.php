@@ -17,4 +17,9 @@ class Plan extends Model
         'description',
         'stripe_id'
     ];
+    
+    public function prices()
+    {
+        return $this->belongsToMany(Price::class)->withTimestamps();
+    }
 }
