@@ -6,11 +6,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Stripe\Customer as StripeCustomer;
 use App\Models\Customer;
+use App\Models\Price;
+use App\Models\Product;
 use Exception;
+use Stripe\Checkout\Session;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\CardException;
 use Stripe\PaymentIntent;
 use Stripe\PaymentMethod;
+use Stripe\Price as StripePrice;
 use Stripe\StripeClient;
 
 class PaymentController extends Controller
@@ -18,7 +22,7 @@ class PaymentController extends Controller
     public function addCard(Request $request)
     {
         $validation = Validator::make($request->all(), [
-            'customer_id'   => 'required|exists:customers,id',
+            'customer_id'   => 'required',
             'card_number'   => 'required|numeric',
             'exp_month'     => 'required|digits:2|numeric',
             'exp_year'      => 'required|digits:4|numeric',
@@ -30,9 +34,8 @@ class PaymentController extends Controller
         }
 
         try {
-            $customer = Customer::find($request->customer_id);
 
-            $stripeCustomer = StripeCustomer::retrieve($customer->stripe_id);
+            $stripeCustomer = StripeCustomer::retrieve($request->customer_id);
 
             $paymentMethod = PaymentMethod::create([
                 'type'  => 'card',
@@ -47,9 +50,8 @@ class PaymentController extends Controller
             $paymentMethod->attach(['customer'  => $stripeCustomer->id]);
 
             $stripeCustomer->default_payment_method = $paymentMethod->id;
-        
 
-            return ok('Card Added.');
+            return ok('Card Added.', $paymentMethod);
             
         } catch (\Stripe\Exception\ApiErrorException $e) {
             return error('Stripe API Error', $e->getMessage(), 'stripe_api');
@@ -61,7 +63,7 @@ class PaymentController extends Controller
     public function createIntent(Request $request)
     {
         $validation = Validator::make($request->all(), [
-            'customer_id'   => 'required|exists:customers,id',
+            'customer_id'   => 'required',
             'amount'        => 'required|numeric',
             'currency'      => 'required'
         ]);
@@ -70,14 +72,13 @@ class PaymentController extends Controller
             return error('Validation Error', $validation->errors(), 'validation');
 
         try {
-            $customer = Customer::find($request->customer_id);
-            $stripeCustomer = StripeCustomer::retrieve($customer->stripe_id);
+            $stripeCustomer = StripeCustomer::retrieve($request->customer_id);
 
             $paymentIntent = PaymentIntent::create([
                 'amount'        => $request->amount,
                 'currency'      => $request->currency,
                 'customer'      => $stripeCustomer->id,
-                'description'   => 'Sample Intent',
+                'description'   => 'Testing Intent',
             ]);
 
             return ok('Payment Intent Created Successful', $paymentIntent);
@@ -85,6 +86,51 @@ class PaymentController extends Controller
             return error('Error', $e->getMessage());
         } catch (ApiErrorException $ae) {
             return error('Stripe API Error', $ae->getMessage());
+        }
+    }
+
+    public function createCheckoutSession(Request $request)
+    {
+        $validation = Validator::make($request->all(), [
+            'customer_id'   => 'required|string',
+            'price_id'      => 'required|string',
+            'success_url'   => 'required|url',
+            'cancel_url'    => 'required|url',
+            'quantity'      => 'required|integer|min:1',
+        ]);
+
+        if ($validation->fails()) {
+            return error('Validation Error', $validation->errors(), 'validation');
+        }
+
+        try {
+
+            $stripeCustomer = StripeCustomer::retrieve($request->customer_id);
+            $stripePrice = StripePrice::retrieve($request->price_id);
+
+            if ($stripePrice->type !== 'one_time') {
+                throw new Exception("Price not valid");
+            }
+
+            $session = Session::create([
+                'customer'              => $stripeCustomer->id,
+                'payment_method_types'  => ['card'],
+                'line_items'            => [
+                    [
+                        'price' => $stripePrice->id,
+                        'quantity' => $request->quantity ?? 1,
+                    ],
+                ],
+                'mode'                  => 'payment',
+                'success_url'           => $request->success_url,
+                'cancel_url'            => $request->cancel_url,
+            ]);
+
+            return ok('Session Created Successfully', $session);
+        } catch (ApiErrorException $e) {
+            return error('Stripe API Error', $e->getMessage());
+        } catch (\Exception $e) {
+            return error('Error', $e->getMessage());
         }
     }
 }
