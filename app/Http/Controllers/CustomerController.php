@@ -2,66 +2,73 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Customer;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Stripe\Customer as StripeCustomer;
-use Stripe\Stripe;
+use Stripe\Exception\ApiErrorException;
 
 class CustomerController extends Controller
 {
     public function create(Request $request)
     {
         $validation = Validator::make($request->all(), [
-            'email' => 'required|email|unique:customers,email',
+            'email' => 'required|email',
             'name'  => 'required|string'
         ]);
 
         if ($validation->fails())
             return error('Validation Error', $validation->errors(), 'validation');
 
-        $stripeCustomer = StripeCustomer::create([
-            'email' => $request->email,
-            'name'  => $request->name
-        ]);
+        try {
+            $stripeCustomer = StripeCustomer::create([
+                'email' => $request->email,
+                'name'  => $request->name
+            ]);
 
-        $customer = Customer::create($request->only(['email', 'name']) + [
-            'stripe_id' => $stripeCustomer->id
-        ]);
-
-        return ok('Customer Create Successfully',$customer);
+            return ok('Customer Create Successfully', $stripeCustomer);
+        } catch (ApiErrorException $ae) {
+            return error('Stripe API Error', $ae->getMessage());
+        } catch (Exception $e) {
+            return error('Error', $e->getMessage());
+        }
     }
 
-    public function update(Request $request, $customerId)
+    public function update(Request $request, $stripe_customer_id)
     {
-        $customer = Customer::where('stripe_id', $customerId)->first();
-
 
         $validation = Validator::make($request->all(), [
-            'email' => 'required|email|unique:customers,email,' . $customer->id,
+            'email' => 'required|email',
             'name'  => 'required|string'
         ]);
 
         if ($validation->fails())
             return error('Validation Error', $validation->errors(), 'validation');
 
-        StripeCustomer::update($customerId, [
-            'email' => $request->email,
-            'name'  => $request->name
-        ]);
+        try {
+            $stripeCustomer = StripeCustomer::update($stripe_customer_id, [
+                'email' => $request->email,
+                'name'  => $request->name
+            ]);
 
-        $customer->update($request->only(['name', 'email']));
-
-        return ok('Customer Updated Successfully', $customer);
+            return ok('Customer Updated Successfully', $stripeCustomer);
+        } catch (ApiErrorException $ae) {
+            return error('Stripe API Error', $ae->getMessage());
+        } catch (Exception $e) {
+            return error('Error', $e->getMessage());
+        }
     }
 
-    public function delete($customerId)
+    public function delete($stripe_customer_id)
     {
-        $customer = Customer::where('stripe_id', $customerId)->first();
-        $stripeCustomer = StripeCustomer::retrieve($customer->stripe_id);
-        $stripeCustomer->delete();
-        $customer->delete();
-
-        return ok('Customer Deleted');
+        try {
+            $stripeCustomer = StripeCustomer::retrieve($stripe_customer_id);
+            $stripeCustomer->delete();
+            return ok('Customer Deleted');
+        } catch (ApiErrorException $ae) {
+            return error('Stripe API Error', $ae->getMessage());
+        } catch (Exception $e) {
+            return error('Error', $e->getMessage());
+        }
     }
 }
