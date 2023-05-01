@@ -10,10 +10,11 @@ use Stripe\Price;
 
 class ItemController extends Controller
 {
+    /*
     public function create(Request $request)
     {
         $validation = Validator::make($request->all(), [
-            'product_id'    => 'required|integer|exists:products,id',
+            'product_id'    => 'required|integer',
             'name'          => 'required|string',
             'description'   => 'nullable|string',
             'currency'      => 'nullable|string',
@@ -24,22 +25,14 @@ class ItemController extends Controller
         if ($validation->fails())
             return error('Validation Error', $validation->errors(), 'validation');
 
-        $product = Product::find($request->product_id);
-
         // create price for the item
         $price = Price::create([
             'unit_amount'   => $request->price,
-            'currency'      => 'usd',
-            'product'       => $product->stripe_product_id,
+            'currency'      => $request->currency ?? 'usd',
+            'product'       => $request->product_id,
         ]);
 
-        // Create the item with the given attributes and the price ID
-        $item = Item::create($request->only(['product_id', 'name', 'description']) + [
-            'price_id'  => $price->id,
-            'currency'  => 'usd',
-            'stripe_id' => $price->id
-        ]);
-
-        return ok('Item Created', $item);
+        return ok('Item Created', $price);
     }
+    */
 }
