@@ -2,73 +2,78 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Plan;
-use App\Models\Product;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Stripe\Exception\ApiErrorException;
 use Stripe\Plan as StripePlan;
-use Stripe\Stripe;
 
 class PlanController extends Controller
 {
     public function create(Request $request)
     {
         $validation = Validator::make($request->all(), [
-            'name'          => 'required|string|unique:plans,name',
-            'amount'        => 'required|numeric|min:0',
-            'interval_unit' => 'required|in:day,week,month,year',
-            'interval'      => 'required|numeric|min:1',
-            'product_id'    => 'required|exists:products,id',
-            'description'   => 'required|string'
+            'name'                  => 'required|string',
+            'amount'                => 'required|numeric|min:0',
+            'interval_unit'         => 'required|in:day,week,month,year',
+            'interval'              => 'required|numeric|min:1',
+            'stripe_product_id'     => 'required',
+            'description'           => 'required|string'
         ]);
 
         if ($validation->fails())
             return error('Validation Error', $validation->errors(), 'validation');
 
-        $product = Product::find($request->product_id);
-
-        $stripePlan = StripePlan::create([
-            'nickname' => $request->name,
-            'amount' => $request->amount,
-            'currency' => 'usd',
-            'interval' => $request->interval_unit,
-            'interval_count' => $request->interval,
-            'product' => $product->stripe_product_id
-        ]);
-
-        $plan = Plan::create($request->only(['name', 'amount', 'currency', 'interval', 'interval_unit', 'description']) + [
-            'stripe_id' => $stripePlan->id
-        ]);
-
-        return ok('Plan Created', $plan);
+        try {
+            $stripePlan = StripePlan::create([
+                'nickname' => $request->name,
+                'amount' => $request->amount,
+                'currency' => 'usd',
+                'interval' => $request->interval_unit,
+                'interval_count' => $request->interval,
+                'product' => $request->stripe_product_id
+            ]);
+            return ok('Plan Created', $stripePlan);
+        } catch (ApiErrorException $ae) {
+            return error('Stripe API Error', $ae->getMessage());
+        } catch (Exception $e) {
+            return error('Error', $e->getMessage());
+        }
     }
 
-    public function update($plan_id, Request $request)
+    public function update($stripe_plan_id, Request $request)
     {
-        $plan = Plan::where('stripe_id', $plan_id)->first();
-
         $validation = Validator::make($request->all(), [
-            'name'          => 'required|string|unique:plans,name,' . $plan->id,
+            'name'          => 'required|string',
             'amount'        => 'required|numeric|min:0'
         ]);
 
         if ($validation->fails())
             return error('Validation Error', $validation->errors(), 'validation');
 
-        StripePlan::update($plan->stripe_id, [
-            'nickname' => $request->name
-        ]);
+        try {
+            StripePlan::update($stripe_plan_id, [
+                'nickname' => $request->name
+            ]);
 
-        $plan->update($request->only('name'));
-        return ok('Plan Updated Successfull');
+            return ok('Plan Updated Successfull');
+        } catch (ApiErrorException $ae) {
+            return error('Stripe API Error', $ae->getMessage());
+        } catch (Exception $e) {
+            return error('Stripe API Error', $e->getMessage());
+        }
     }
 
-    public function delete($plan_id)
+    public function delete($stripe_plan_id)
     {
-        $plan = Plan::where('stripe_id', $plan_id)->first();
-        $stripePlan = StripePlan::retrieve($plan->stripe_id);
-        $stripePlan->delete();
-        $plan->delete();
-        return ok('Plan Deleted Successfully');
+        try {
+            $stripePlan = StripePlan::retrieve($stripe_plan_id);
+            $stripePlan->delete();
+            return ok('Plan Deleted Successfully');
+        } catch (ApiErrorException $ae) {
+            return error('Stripe API Error', $ae->getMessage());
+        } catch (Exception $e) {
+            return error('Stripe API Error', $e->getMessage());
+        }
     }
 }
