@@ -2,13 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Item;
-use App\Models\Plan;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Stripe\Exception\ApiErrorException;
 use Stripe\Price as StripePrice;
-use App\Models\Product;
-use App\Models\Price;
 
 
 class PriceController extends Controller
@@ -16,9 +14,9 @@ class PriceController extends Controller
     public function create(Request $request)
     {
         $validation = Validator::make($request->all(), [
-            'item_id'       => 'required|exists:items,id',
-            'product_id'    => 'required|exists:products,stripe_product_id',
-            'plan_id'       => 'required|exists:plans,id',
+            'item_id'       => 'required|string',
+            'product_id'    => 'required|string',
+            'plan_id'       => 'required|string',
             'amount'        => 'required|integer|min:1',
             'currency'      => 'nullable|string',
             'interval'      => 'required|string|in:day,week,month,year'
@@ -27,34 +25,25 @@ class PriceController extends Controller
         if ($validation->fails())
             return error('Validation Error', $validation->errors(), 'validation');
 
-        $stripePrice = StripePrice::create([
-            'product'       => $request->product_id,
-            'unit_amount'   => $request->amount,
-            'currency'      => $request->currency ?? 'usd',
-            'recurring'     => [
-                'interval'  => $request->interval,
-            ]
-        ]);
-
-        $price = Price::where('stripe_id', $stripePrice->id)->first();
-        $product = Product::where('stripe_product_id', $request->product_id)->first();
-
-        if (!$price) {
-            $price = Price::create([
-                'product_id' => $product->id,
-                'plan_id' => $request->plan_id,
-                'amount' => $request->amount,
-                'currency' => $request->currency,
-                'stripe_id' => $stripePrice->id,
+        try {
+            $stripePrice = StripePrice::create([
+                'product'       => $request->product_id,
+                'unit_amount'   => $request->amount,
+                'currency'      => $request->currency ?? 'usd',
+                'recurring'     => [
+                    'interval'  => $request->interval,
+                ],
+                'metadata'      => [
+                    'item_id'   => $request->item_id,
+                    'plan_id'   => $request->plan_id
+                ]
             ]);
+
+            return ok('Price Created', $stripePrice);
+        } catch (ApiErrorException $ae) {
+            return error('Stripe API Error', $ae->getMessage());
+        } catch (Exception $e) {
+            return error('Error', $e->getMessage());
         }
-        
-        $item = Item::find($request->item_id);
-        $item->prices()->attach($price->id);
-
-        $plan = Plan::find($request->plan_id);
-        $plan->prices()->attach($price->id);
-
-        return ok('Price Created', $price);
     }
 }
